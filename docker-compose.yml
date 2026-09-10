@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: payments-db
+    environment:
+      POSTGRES_USER: payments
+      POSTGRES_PASSWORD: payments
+      POSTGRES_DB: payments
+    ports:
+      - '5434:5432'
+    volumes:
+      - payments-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U payments -d payments']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:4.14.0
+    container_name: payments-localstack
+    environment:
+      SERVICES: sqs,sns,s3
+      DEBUG: 0
+    ports:
+      - '4566:4566'
+    volumes:
+      - payments-localstack-data:/var/lib/localstack
+    healthcheck:
+      test: ['CMD-SHELL', 'awslocal sqs list-queues || exit 1']
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+volumes:
+  payments-db-data:
+  payments-localstack-data:
