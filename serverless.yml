@@ -1,0 +1,121 @@
+service: payments
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 29
+  logRetentionInDays: 14
+  tracing:
+    lambda: true
+    httpApi: true
+  environment:
+    NODE_ENV: production
+    DATABASE_URL: ${ssm:/payments/${sls:stage}/database-url}
+    PAYMENTS_QUEUE_URL: !Ref PaymentsQueue
+    PAYMENT_EVENTS_TOPIC_ARN: !Ref PaymentEventsTopic
+    RECEIPTS_BUCKET: !Ref ReceiptsBucket
+    MAX_ATTEMPTS: '3'
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action: [sqs:SendMessage, sqs:GetQueueAttributes]
+          Resource: !GetAtt PaymentsQueue.Arn
+        - Effect: Allow
+          Action: [sns:Publish]
+          Resource: !Ref PaymentEventsTopic
+        - Effect: Allow
+          Action: [s3:PutObject, s3:GetObject]
+          Resource: !Sub '${ReceiptsBucket.Arn}/*'
+
+package:
+  patterns:
+    - '!**'
+    - 'dist/**'
+    - 'node_modules/**'
+    - '!node_modules/@types/**'
+    - '!node_modules/.cache/**'
+
+functions:
+  api:
+    handler: dist/lambda/api.handler.handler
+    events:
+      - httpApi: '*'
+    # vpc:
+    #   securityGroupIds: [sg-xxxx]
+    #   subnetIds: [subnet-a, subnet-b]
+
+  paymentWorker:
+    handler: dist/lambda/worker.handler.handler
+    timeout: 60
+    reservedConcurrency: 10
+    events:
+      - sqs:
+          arn: !GetAtt PaymentsQueue.Arn
+          batchSize: 5
+          maximumBatchingWindow: 5
+          functionResponseType: ReportBatchItemFailures
+
+resources:
+  Resources:
+    PaymentsQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-payments.fifo
+        FifoQueue: true
+        DeduplicationScope: messageGroup
+        FifoThroughputLimit: perMessageGroupId
+        # >= 6x o timeout do worker
+        VisibilityTimeout: 360
+        MessageRetentionPeriod: 1209600
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt PaymentsDlq.Arn
+          maxReceiveCount: 5
+
+    PaymentsDlq:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-payments-dlq.fifo
+        FifoQueue: true
+        MessageRetentionPeriod: 1209600
+
+    PaymentEventsTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: ${self:service}-${sls:stage}-events
+
+    ReceiptsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:service}-${sls:stage}-receipts-${aws:accountId}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        VersioningConfiguration:
+          Status: Enabled
+
+    DlqDepthAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: ${self:service}-${sls:stage}-dlq-not-empty
+        Namespace: AWS/SQS
+        MetricName: ApproximateNumberOfMessagesVisible
+        Dimensions:
+          - Name: QueueName
+            Value: !GetAtt PaymentsDlq.QueueName
+        Statistic: Maximum
+        Period: 60
+        EvaluationPeriods: 1
+        Threshold: 0
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: notBreaching
+        AlarmActions: [!Ref PaymentEventsTopic]

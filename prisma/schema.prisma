@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  PIX
+  BOLETO
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  idempotencyKey String        @unique
+  customerId     String
+  amountCents    Int
+  currency       String        @default("BRL")
+  method         PaymentMethod
+  status         PaymentStatus @default(PENDING)
+  providerRef    String?
+  failureCode    String?
+  failureMessage String?
+  attemptCount   Int           @default(0)
+  settledAt      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  attempts PaymentAttempt[]
+  events   PaymentEvent[]
+  receipt  Receipt?
+
+  @@index([customerId, createdAt])
+  @@index([status, createdAt])
+}
+
+model PaymentAttempt {
+  id           String        @id @default(cuid())
+  paymentId    String
+  payment      Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  number       Int
+  status       PaymentStatus
+  errorCode    String?
+  errorMessage String?
+  latencyMs    Int
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([paymentId, number])
+  @@index([paymentId])
+}
+
+model PaymentEvent {
+  id          String    @id @default(cuid())
+  paymentId   String
+  payment     Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  type        String
+  payload     Json
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([publishedAt, createdAt])
+  @@index([paymentId])
+}
+
+model Receipt {
+  id        String   @id @default(cuid())
+  paymentId String   @unique
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  bucket    String
+  objectKey String
+  checksum  String
+  bytes     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+}
