@@ -10,28 +10,22 @@ database never records it.
 
 ## Architecture
 
-```
-Client
-  │
-  ▼
-API Gateway (HTTP API)
-  │
-  ▼
-Lambda: api  ──────────►  PostgreSQL (RDS)
-  │                            ▲
-  ▼                            │
-SQS FIFO ──────────────────────┼──────────► DLQ ──► CloudWatch Alarm
-  │                            │
-  ▼                            │
-Lambda: paymentWorker ─────────┘
-  ├──► Payment Gateway
-  ├──► S3      (receipts)
-  └──► SNS     (domain events)
-```
+<img width="2019" height="2889" alt="arquiteturaServerless" src="https://github.com/user-attachments/assets/d1985f5d-677e-4589-b342-4973d7baa940" />
+
+
+
 
 The API does exactly two things: persist the payment as `PENDING` and publish to
 the queue. No provider call happens inside the request cycle, so the client gets
 a `202 Accepted` in milliseconds and the charge is resolved by the worker.
+
+
+## Life Cycle Of a Payment 
+
+<img width="3303" height="2457" alt="ciclodevidaPagamento" src="https://github.com/user-attachments/assets/7107a5da-52e2-48b1-96fa-71350644dd7f" />
+
+
+
 
 ## Correctness guarantees
 
@@ -266,28 +260,17 @@ registra.
 
 ## Arquitetura
 
-```
-Client
-  │
-  ▼
-API Gateway (HTTP API)
-  │
-  ▼
-Lambda: api  ──────────►  PostgreSQL (RDS)
-  │                            ▲
-  ▼                            │
-SQS FIFO ──────────────────────┼──────────► DLQ ──► CloudWatch Alarm
-  │                            │
-  ▼                            │
-Lambda: paymentWorker ─────────┘
-  ├──► Payment Gateway
-  ├──► S3      (comprovantes)
-  └──► SNS     (eventos de domínio)
-```
+<img width="2019" height="2889" alt="arquiteturaServerless" src="https://github.com/user-attachments/assets/2ff4598d-d24e-43dc-847e-1b05f9e06bf8" />
+
 
 A API só faz duas coisas: persiste o pagamento como `PENDING` e publica na fila.
 Nenhuma chamada ao provider acontece no ciclo da request, então o cliente recebe
 `202 Accepted` em milissegundos e a cobrança é resolvida pelo worker.
+
+## Ciclo de vida de um Pagamento
+
+<img width="3303" height="2457" alt="ciclodevidaPagamento" src="https://github.com/user-attachments/assets/ed789ed2-d0d5-4277-822a-8341a6e35550" />
+
 
 ## Garantias de correção
 
