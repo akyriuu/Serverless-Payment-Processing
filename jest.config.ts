@@ -17,11 +17,18 @@ const config: Config = {
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
-  moduleNameMapper: pathsToModuleNameMapper(paths, { prefix: '<rootDir>/' }),
+  moduleNameMapper: {
+    // O client gerado pelo Prisma 7 importa seus módulos internos com sufixo
+    // .js, como manda o NodeNext. O resolver do Jest procura o arquivo literal
+    // e não encontra o .ts, então o sufixo é removido antes da resolução.
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+    ...pathsToModuleNameMapper(paths, { prefix: '<rootDir>/' }),
+  },
   collectCoverageFrom: [
     'src/**/*.(t|j)s',
     'libs/**/*.(t|j)s',
     'apps/**/*.(t|j)s',
+    '!src/generated/**',
   ],
   coverageDirectory: './coverage',
   testEnvironment: 'node',
